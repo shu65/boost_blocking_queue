@@ -25,24 +25,34 @@ public:
 	}
 
 	size_t GetSize() {
-		boost::mutex::scoped_lock lock (mutex_);
+		boost::mutex::scoped_lock lock(mutex_);
 		return queue_.size();
 	}
 
 	bool IsEmpty() {
-		boost::mutex::scoped_lock lock (mutex_);
+		boost::mutex::scoped_lock lock(mutex_);
 		return queue_.empty();
 	}
 
 	int Enqueue(const T &item) {
-		boost::mutex::scoped_lock lock (mutex_);
+		boost::mutex::scoped_lock lock(mutex_);
 		queue_.push(item);
 		condition_.notify_one();
 		return 0;
 	}
 
+	int TryToEnqueue(const T &item) {
+		boost::mutex::scoped_try_lock lock(mutex_);
+		if (lock) {
+			queue_.push(item);
+			condition_.notify_one();
+			return 0;
+		}
+		return 1;
+	}
+
 	int Dequeue(T &item) {
-		boost::mutex::scoped_lock lock (mutex_);
+		boost::mutex::scoped_lock lock(mutex_);
 		if (queue_.empty()) {
 			return 1;
 		}
@@ -51,14 +61,40 @@ public:
 		return 0;
 	}
 
+	int TryToDequeue(T &item) {
+		boost::mutex::scoped_try_lock lock(mutex_);
+		if (lock) {
+			if (queue_.empty()) {
+				return 1;
+			}
+			item = queue_.front();
+			queue_.pop();
+			return 0;
+		}
+		return 1;
+	}
+
 	int WaitAndDequeue(T &item) {
-		boost::mutex::scoped_lock lock (mutex_);
+		boost::mutex::scoped_lock lock(mutex_);
 		while (queue_.empty()) {
 			condition_.wait(lock);
 		}
 		item = queue_.front();
 		queue_.pop();
 		return 0;
+	}
+
+	int TryToWaitAndDequeue(T &item) {
+		boost::mutex::scoped_try_lock lock(mutex_);
+		if (lock) {
+			while (queue_.empty()) {
+				condition_.wait(lock);
+			}
+			item = queue_.front();
+			queue_.pop();
+			return 0;
+		}
+		return 1;
 	}
 
 private:
